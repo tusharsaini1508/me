@@ -1,7 +1,2 @@
-# Streamlit Cloud compatible dependencies
-# Note: tesseract-ocr causes library conflicts on Streamlit Cloud
-# The app gracefully handles missing Tesseract with proper error messages
-# For local deployment with OCR, install tesseract-ocr separately
-
 libgl1
 
