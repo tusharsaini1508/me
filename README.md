@@ -139,7 +139,20 @@ required rights-cleared, labelled receipt-photo evaluation set.
 2. In Streamlit Community Cloud, create an app from that repository and select `app.py` as the entry point.
 3. Keep `requirements.txt` and `packages.txt` at the repository root so the platform installs the pinned Python and Linux dependencies during the build.
 4. In **Advanced settings**, select Python 3.11 to match the verified local environment (Community Cloud otherwise defaults to Python 3.12).
-5. Confirm a receipt image, PDF, and DOCX upload can invoke local Tesseract, then record the public app URL in the final submission.
+
+**Note on OCR in Cloud Environments:**  
+Streamlit Cloud deployments have system-level library constraints that prevent local Tesseract OCR installation. The app is designed with graceful degradation:
+- Users can upload receipt images, PDFs, and Word documents
+- The pipeline validates and processes images normally
+- If Tesseract is unavailable, the app displays a clear message ("Text recognition is not configured on this machine") with setup instructions
+- Users can still test image quality gates and document upload flows
+- For full OCR functionality, run the app locally with Tesseract installed
+
+Local testing with OCR:
+```bash
+# On your local machine with Tesseract installed:
+streamlit run app.py
+```
 
 The app has no need for API keys or hosted vision services. If Streamlit secrets are later introduced for unrelated configuration, keep them in `.streamlit/secrets.toml`, which is ignored by Git.
 
