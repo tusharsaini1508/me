@@ -7,6 +7,7 @@ result, and ensuring the temporary source image is removed after processing.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import math
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 # Import the required headless entry point separately from the optional preview
@@ -303,6 +305,164 @@ def _clear_stale_result(fingerprint: str) -> None:
         st.session_state.pop("receipt_analysis", None)
 
 
+def _decode_component_payload(payload: Any) -> tuple[bytes | None, str | None]:
+    """Decode a Streamlit component payload into upload bytes and a filename."""
+
+    if not payload:
+        return None, None
+
+    if isinstance(payload, Mapping):
+        payload_value = payload.get("data_url") or payload.get("value")
+        if isinstance(payload_value, str):
+            payload = payload_value
+        else:
+            return None, None
+
+    if not isinstance(payload, str):
+        return None, None
+    if not payload.startswith("data:"):
+        return None, None
+
+    header, _, encoded = payload.partition(",")
+    if not encoded:
+        return None, None
+
+    try:
+        raw_bytes = base64.b64decode(encoded, validate=True)
+    except Exception:
+        return None, None
+
+    mime_type = header.split(";", 1)[0].split(":", 1)[1] if ":" in header else "image/jpeg"
+    suffix = ".jpg"
+    if mime_type.endswith("png"):
+        suffix = ".png"
+    elif mime_type.endswith("webp"):
+        suffix = ".webp"
+    elif mime_type.endswith("jpeg") or mime_type.endswith("jpg"):
+        suffix = ".jpg"
+    elif mime_type.endswith("bmp"):
+        suffix = ".bmp"
+    elif mime_type.endswith("tiff") or mime_type.endswith("tif"):
+        suffix = ".tiff"
+
+    return raw_bytes, f"live-capture{suffix}"
+
+
+def _render_live_camera_component() -> Any:
+    """Render an embedded live camera component that auto-captures when the frame looks clear."""
+
+    html = """
+    <div style="font-family: sans-serif;">
+      <div id="status" style="margin-bottom: 8px; font-weight: 600;">Starting camera…</div>
+      <video id="video" autoplay playsinline muted style="width: 100%; max-height: 320px; border-radius: 10px; background: #111;"></video>
+      <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+    <script>
+      const statusEl = document.getElementById('status');
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
+      let streamStarted = false;
+      let lastCaptureAt = 0;
+      let led = 0;
+
+      async function startCamera() {
+        try {
+          const mediaStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}, audio: false});
+          video.srcObject = mediaStream;
+          await video.play();
+          streamStarted = true;
+          statusEl.textContent = 'Camera ready — waiting for a clear frame…';
+        } catch (error) {
+          statusEl.textContent = 'Camera access was blocked. Use the file uploader instead.';
+        }
+      }
+
+      function evaluateFrame() {
+        if (!streamStarted || video.videoWidth === 0 || video.videoHeight === 0) {
+          return null;
+        }
+        const width = Math.min(320, video.videoWidth);
+        const height = Math.min(240, video.videoHeight);
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+        const imageData = context.getImageData(0, 0, width, height);
+        const pixels = imageData.data;
+        let brightnessSum = 0;
+        let varianceSum = 0;
+        let edgeScore = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const brightness = (r + g + b) / 3;
+          brightnessSum += brightness;
+          varianceSum += brightness * brightness;
+        }
+        const brightness = brightnessSum / (width * height);
+        const variance = varianceSum / (width * height) - brightness * brightness;
+        for (let y = 1; y < height - 1; y += 1) {
+          for (let x = 1; x < width - 1; x += 1) {
+            const idx = (y * width + x) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            const brightnessValue = (r + g + b) / 3;
+            const left = pixels[idx - 4];
+            const right = pixels[idx + 4];
+            const up = pixels[idx - width * 4];
+            const down = pixels[idx + width * 4];
+            const delta = Math.abs(brightnessValue - (left + right + up + down) / 4);
+            edgeScore += delta;
+          }
+        }
+        edgeScore /= width * height;
+        const stabilityScore = Math.max(0, 1 - Math.abs(brightness - 120) / 140);
+        const qualityScore = stabilityScore * 0.6 + Math.min(1, edgeScore / 18) * 0.4;
+        return {qualityScore, brightness, variance};
+      }
+
+      function captureFrame() {
+        const now = Date.now();
+        if (now - lastCaptureAt < 1500) {
+          return;
+        }
+        const actualFrame = evaluateFrame();
+        if (!actualFrame) {
+          return;
+        }
+        const {qualityScore, brightness, variance} = actualFrame;
+        if (qualityScore > 0.72 && brightness > 55 && brightness < 220 && variance > 1200) {
+          lastCaptureAt = now;
+          canvas.toBlob(function(blob) {
+            const reader = new FileReader();
+            reader.onloadend = function() {
+              window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: {data_url: reader.result, filename: 'live-capture.jpg'}
+              }, '*');
+            };
+            reader.readAsDataURL(blob);
+          }, 'image/jpeg', 0.92);
+        }
+      }
+
+      async function loop() {
+        if (!streamStarted) {
+          await startCamera();
+        }
+        captureFrame();
+        window.requestAnimationFrame(loop);
+      }
+
+      loop();
+    </script>
+    """
+
+    return components.html(html, height=420, scrolling=False, key="auto_camera_capture")
+
+
 def _is_supported_source_name(original_name: str) -> bool:
     suffix = Path(original_name).suffix.lower()
     return suffix in ALLOWED_SUFFIXES or suffix in SUPPORTED_DOCUMENT_SUFFIXES
@@ -424,10 +584,30 @@ def main() -> None:
             "Captures are processed locally and are removed from temporary storage after analysis."
         )
 
-    camera_file = st.camera_input(
-        "Live receipt capture",
-        help="Capture a receipt directly from your camera. The app will only analyze it when it passes quality checks.",
+    auto_capture_enabled = st.checkbox(
+        "Auto-capture when the live view looks clear",
+        value=True,
+        help="The app will try to capture a clear live frame automatically when the preview looks sharp and well lit.",
     )
+
+    camera_file = None
+    if auto_capture_enabled:
+        st.caption("Auto-capture is active. A clear frame will be made available automatically.")
+        component_payload = _render_live_camera_component()
+        if isinstance(component_payload, Mapping):
+            decoded_bytes, decoded_name = _decode_component_payload(component_payload)
+            if decoded_bytes is not None and decoded_name is not None:
+                camera_file = type("CameraUpload", (), {"getvalue": lambda self: decoded_bytes, "name": decoded_name})()
+        elif isinstance(component_payload, str):
+            decoded_bytes, decoded_name = _decode_component_payload(component_payload)
+            if decoded_bytes is not None and decoded_name is not None:
+                camera_file = type("CameraUpload", (), {"getvalue": lambda self: decoded_bytes, "name": decoded_name})()
+    else:
+        camera_file = st.camera_input(
+            "Live receipt capture",
+            help="Capture a receipt directly from your camera. The app will only analyze it when it passes quality checks.",
+        )
+
     uploaded_file = st.file_uploader(
         "Receipt photo or document",
         type=["bmp", "jpeg", "jpg", "png", "tif", "tiff", "webp", "pdf", "docx"],
