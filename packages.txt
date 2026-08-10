@@ -1,2 +1,4 @@
 libgl1
+zlib1g-dev
+libjpeg-dev
 
