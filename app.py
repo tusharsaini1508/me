@@ -435,6 +435,9 @@ def main() -> None:
         help="Use a clear phone photo, a receipt scan, a PDF, or a DOCX document.",
     )
 
+    if uploaded_file is None:
+        st.caption("Tip: click the upload area above and choose a photo from your camera or gallery.")
+
     source_file = uploaded_file
     if source_file is None:
         st.info("Choose a receipt photo, PDF, or Word document to begin.")
