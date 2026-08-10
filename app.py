@@ -471,7 +471,7 @@ def main() -> None:
             st.text_area("Extracted text", source_payload["text"] or "", height=220)
         else:
             try:
-                st.image(source_payload["bytes"], caption=source_name, use_column_width=True)
+                st.image(source_payload["bytes"], caption=source_name, use_container_width=True)
             except Exception:
                 st.error(
                     "The selected file could not be decoded as an image. "
