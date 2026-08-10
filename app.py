@@ -19,6 +19,7 @@ from numbers import Real
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
+import cv2
 import streamlit as st
 
 
@@ -304,10 +305,54 @@ def _clear_stale_result(fingerprint: str) -> None:
         st.session_state.pop("receipt_analysis", None)
 
 
+def _decode_component_payload(payload: str | None) -> tuple[bytes | None, str | None]:
+    """Decode legacy component payloads emitted by the old live-camera helper."""
+
+    if not payload:
+        return None, None
+
+    header, _, encoded = payload.partition(",")
+    if not encoded:
+        return None, None
+
+    if "base64" not in header.lower():
+        return None, None
+
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except Exception:
+        return None, None
+    return image_bytes, "live-capture.jpg"
+
+
+def _camera_photo_to_upload_bytes(camera_photo: Any) -> tuple[bytes | None, str | None]:
+    """Convert a Streamlit camera capture into a temporary upload payload."""
+
+    if camera_photo is None:
+        return None, None
+    if isinstance(camera_photo, bytes):
+        return camera_photo, "live-photo.jpg"
+    if hasattr(camera_photo, "getvalue"):
+        try:
+            return camera_photo.getvalue(), "live-photo.jpg"
+        except Exception:
+            pass
+
+    try:
+        success, encoded = cv2.imencode(".jpg", camera_photo)
+    except Exception:
+        return None, None
+    if not success:
+        return None, None
+    return encoded.tobytes(), "live-photo.jpg"
+
+
 def _render_live_camera_component() -> Any:
     """Compatibility stub retained for older imports; the live camera feature is disabled."""
 
     return None
+
+
 def _is_supported_source_name(original_name: str) -> bool:
     suffix = Path(original_name).suffix.lower()
     return suffix in ALLOWED_SUFFIXES or suffix in SUPPORTED_DOCUMENT_SUFFIXES
@@ -429,34 +474,44 @@ def main() -> None:
             "Captures are processed locally and are removed from temporary storage after analysis."
         )
 
-    uploaded_file = st.file_uploader(
-        "Receipt photo or document",
-        type=["bmp", "jpeg", "jpg", "png", "tif", "tiff", "webp", "pdf", "docx"],
-        help="Use a clear phone photo, a receipt scan, a PDF, or a DOCX document.",
-    )
+    source_bytes: bytes | None = None
+    source_name = "receipt-upload.png"
+    source_kind = "upload"
 
-    if uploaded_file is None:
-        st.caption("Tip: click the upload area above and choose a photo from your camera or gallery.")
+    if hasattr(st, "camera_input"):
+        camera_photo = st.camera_input(
+            "Take live photo",
+            help="Use your device camera to capture a receipt photo directly in the browser.",
+        )
+        camera_bytes, camera_name = _camera_photo_to_upload_bytes(camera_photo)
+        if camera_bytes is not None:
+            source_bytes = camera_bytes
+            source_name = camera_name or "live-photo.jpg"
+            source_kind = "live-photo"
+            st.success("Live photo captured. You can analyze it below.")
 
-    source_file = uploaded_file
-    if source_file is None:
-        st.info("Choose a receipt photo, PDF, or Word document to begin.")
-        return
+    if source_bytes is None:
+        uploaded_file = st.file_uploader(
+            "Receipt photo or document",
+            type=["bmp", "jpeg", "jpg", "png", "tif", "tiff", "webp", "pdf", "docx"],
+            help="Use a clear phone photo, a receipt scan, a PDF, or a DOCX document.",
+        )
+        if uploaded_file is None:
+            st.info("Choose a receipt photo, PDF, or Word document to begin.")
+            return
+        source_file = uploaded_file
+        source_bytes = source_file.getvalue() if hasattr(source_file, "getvalue") else None
+        source_name = getattr(source_file, "name", None) or "receipt-upload.png"
+        if not _is_supported_source_name(source_name):
+            st.error("Unsupported file type. Please upload an image, PDF, or Word document.")
+            return
 
-    source_bytes = source_file.getvalue() if hasattr(source_file, "getvalue") else None
     if not source_bytes:
         st.error("That file is empty. Please choose a valid image, PDF, or Word document.")
         return
     if len(source_bytes) > MAX_UPLOAD_BYTES:
         st.error("This file is larger than 15 MB. Please upload or capture a smaller file.")
         return
-
-    source_name = getattr(source_file, "name", None) or "receipt-upload.png"
-    if not _is_supported_source_name(source_name):
-        st.error("Unsupported file type. Please upload an image, PDF, or Word document.")
-        return
-
-    source_kind = "upload"
     try:
         source_payload = _prepare_source_payload(source_bytes, source_name)
     except Exception:
