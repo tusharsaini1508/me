@@ -1,4 +1,6 @@
 libgl1
 zlib1g-dev
 libjpeg-dev
+tesseract-ocr
+tesseract-ocr-eng
 
