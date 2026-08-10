@@ -36,6 +36,15 @@ class AppHelperTests(unittest.TestCase):
         self.assertEqual(len(rows), len(app.EXPECTED_FIELDS))
         self.assertEqual(reviewed, list(app.EXPECTED_FIELDS))
 
+    def test_ocr_runtime_issues_are_treated_as_actionable_setup_errors(self) -> None:
+        result = {
+            "quality": {"pass": False, "issues": ["Local OCR is unavailable — install Tesseract OCR on this system and try again."]},
+            "fields": {},
+            "processing_ms": 1,
+        }
+
+        self.assertTrue(app._should_accept_capture(result))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

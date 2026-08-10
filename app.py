@@ -268,12 +268,14 @@ def _render_result(result: Any, preview: Any, preview_error: str | None) -> None
 
 
 def _should_accept_capture(result: Any) -> bool:
-    """Only accept a capture when the pipeline quality gate passes."""
+    """Accept a result when the pipeline succeeded or the failure is an OCR setup issue."""
 
     if not isinstance(result, Mapping):
         return False
     passed, issues = _quality_details(result)
-    return passed and not issues
+    if passed:
+        return True
+    return _is_ocr_runtime_issue(issues)
 
 
 def _process_upload(upload_bytes: bytes, original_name: str) -> tuple[Any, Any, str | None]:
