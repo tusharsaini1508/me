@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import app
 
@@ -48,6 +51,38 @@ class AppHelperTests(unittest.TestCase):
         }
 
         self.assertTrue(app._should_accept_capture(result))
+
+    def test_saved_scan_payload_contains_metadata_and_json_safe_content(self) -> None:
+        payload = app._build_saved_scan_payload(
+            source_name="receipt.png",
+            fingerprint="abc123",
+            result={"fields": {"merchant_name": {"value": "Cafe", "confidence": 0.91}}},
+            preview=None,
+            preview_error=None,
+        )
+
+        self.assertEqual(payload["source_name"], "receipt.png")
+        self.assertEqual(payload["fingerprint"], "abc123")
+        self.assertEqual(payload["result"]["fields"]["merchant_name"]["value"], "Cafe")
+        self.assertIn("saved_at", payload)
+        self.assertIsNone(payload["preview_error"])
+
+    def test_persist_saved_scan_writes_json_to_disk(self) -> None:
+        payload = app._build_saved_scan_payload(
+            source_name="receipt.png",
+            fingerprint="def456",
+            result={"fields": {"total_amount": {"value": "12.34", "confidence": 0.87}}},
+            preview=None,
+            preview_error=None,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            saved_path = app._persist_saved_scan(payload, base_dir=Path(temp_dir))
+            self.assertTrue(saved_path.exists())
+            self.assertTrue(saved_path.suffix == ".json")
+            loaded = json.loads(saved_path.read_text(encoding="utf-8"))
+            self.assertEqual(loaded["fingerprint"], "def456")
+            self.assertEqual(loaded["result"]["fields"]["total_amount"]["value"], "12.34")
 
 
 if __name__ == "__main__":  # pragma: no cover

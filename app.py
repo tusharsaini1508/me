@@ -13,8 +13,10 @@ import json
 import math
 import mimetypes
 import os
+import re
 import tempfile
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from numbers import Real
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -46,6 +48,7 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 SUPPORTED_DOCUMENT_SUFFIXES = {".pdf", ".docx"}
 EXPECTED_FIELDS = ("merchant_name", "transaction_date", "total_amount", "currency")
+SAVED_SCANS_DIRNAME = "saved_scans"
 OCR_RUNTIME_MARKERS = (
     "local ocr is unavailable",
     "tesseract executable",
@@ -118,6 +121,47 @@ def _json_safe(value: Any) -> Any:
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _sanitize_scan_name(value: str | None) -> str:
+    """Return a filesystem-safe scan name for saved JSON artifacts."""
+
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "receipt").strip())
+    return sanitized[:80] or "receipt"
+
+
+def _build_saved_scan_payload(
+    *,
+    source_name: str | None,
+    fingerprint: str | None,
+    result: Any,
+    preview: Any,
+    preview_error: str | None,
+) -> dict[str, Any]:
+    """Create a structured JSON payload for a saved OCR scan result."""
+
+    return {
+        "saved_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "source_name": source_name or "receipt-upload.png",
+        "fingerprint": fingerprint or "",
+        "result": _json_safe(result),
+        "preview_available": preview is not None,
+        "preview_error": preview_error,
+    }
+
+
+def _persist_saved_scan(payload: Mapping[str, Any], *, base_dir: Path | None = None) -> Path:
+    """Persist a saved scan payload to disk as pretty-printed JSON."""
+
+    scans_dir = base_dir or Path(__file__).resolve().parent / SAVED_SCANS_DIRNAME
+    scans_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = str(payload.get("saved_at") or datetime.now(timezone.utc).replace(microsecond=0).isoformat())
+    timestamp = timestamp.replace(":", "-").replace("+", "Z")
+    source_name = _sanitize_scan_name(str(payload.get("source_name") or "receipt"))
+    file_path = scans_dir / f"{source_name}-{timestamp}.json"
+    file_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+    return file_path
 
 
 def _quality_details(result: Mapping[str, Any]) -> tuple[bool, list[str]]:
@@ -227,7 +271,14 @@ def _render_rectified_preview(preview: Any, preview_error: str | None) -> None:
         st.caption("The extraction completed, but the optional preview could not be generated.")
 
 
-def _render_result(result: Any, preview: Any, preview_error: str | None) -> None:
+def _render_result(
+    result: Any,
+    preview: Any,
+    preview_error: str | None,
+    *,
+    source_name: str | None = None,
+    fingerprint: str | None = None,
+) -> None:
     if not isinstance(result, Mapping):
         st.error("The extractor returned an unexpected result format.")
         st.code(json.dumps(_json_safe(result), indent=2, ensure_ascii=False), language="json")
@@ -260,6 +311,18 @@ def _render_result(result: Any, preview: Any, preview_error: str | None) -> None
     display_result = _json_safe(result_mapping)
     json_text = json.dumps(display_result, indent=2, ensure_ascii=False, allow_nan=False)
     st.code(json_text, language="json")
+    save_clicked = st.button("Save scan data", use_container_width=False)
+    if save_clicked:
+        payload = _build_saved_scan_payload(
+            source_name=source_name,
+            fingerprint=fingerprint,
+            result=result_mapping,
+            preview=preview,
+            preview_error=preview_error,
+        )
+        saved_path = _persist_saved_scan(payload)
+        st.session_state["last_saved_scan_path"] = str(saved_path)
+        st.success(f"Saved scan data to {saved_path}")
     st.download_button(
         "Download JSON",
         data=json_text,
@@ -477,6 +540,7 @@ def main() -> None:
     source_bytes: bytes | None = None
     source_name = "receipt-upload.png"
     source_kind = "upload"
+    source_file = None
 
     if hasattr(st, "camera_input"):
         camera_photo = st.camera_input(
@@ -601,6 +665,7 @@ def main() -> None:
                         "result": result,
                         "preview": preview,
                         "preview_error": preview_error,
+                        "source_name": source_name,
                     }
                 st.session_state["last_processed_fingerprint"] = fingerprint
 
@@ -611,6 +676,8 @@ def main() -> None:
             saved_result.get("result"),
             saved_result.get("preview"),
             saved_result.get("preview_error"),
+            source_name=saved_result.get("source_name") or source_name,
+            fingerprint=saved_result.get("fingerprint") or fingerprint,
         )
 
 
