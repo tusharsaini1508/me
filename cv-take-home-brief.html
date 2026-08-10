@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computer Vision Take-Home — Receipt Capture &amp; Extraction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#D8DAD3;
+    --paper:#EDEEE8;
+    --paper-edge:#E3E5DD;
+    --ink:#2B2E33;
+    --ink-soft:#5E646B;
+    --ink-faint:#8C9299;
+    --rule:#C3C7BE;
+    --stamp:#A6342C;
+    --stamp-wash:rgba(166,52,44,.08);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+    --w:44rem;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;padding:2.5rem 1rem 5rem;
+    background:var(--bg);color:var(--ink);
+    font-family:var(--sans);font-size:16.5px;line-height:1.62;
+    font-feature-settings:"kern";
+  }
+
+  /* ---------- paper ---------- */
+  .sheet{
+    position:relative;max-width:var(--w);margin:0 auto;
+    background:var(--paper);
+    padding:3.25rem clamp(1.25rem,5vw,3.25rem) 3.5rem;
+    box-shadow:0 1px 0 rgba(0,0,0,.06),0 18px 40px -28px rgba(0,0,0,.5);
+  }
+  .sheet::before,.sheet::after{
+    content:"";position:absolute;left:0;right:0;height:9px;
+    background-repeat:repeat-x;background-size:14px 9px;
+  }
+  .sheet::before{top:0;background-image:radial-gradient(circle at 7px 0,var(--bg) 5.5px,transparent 6px)}
+  .sheet::after{bottom:0;background-image:radial-gradient(circle at 7px 9px,var(--bg) 5.5px,transparent 6px)}
+
+  /* ---------- masthead ---------- */
+  .masthead{position:relative;border-bottom:2px solid var(--ink);padding-bottom:1.5rem}
+  .eyebrow{
+    font-family:var(--mono);font-size:.7rem;font-weight:500;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 1rem;
+  }
+  .title{
+    font-size:clamp(1.9rem,6vw,2.75rem);font-weight:700;line-height:1.08;
+    letter-spacing:-.02em;margin:0 0 .6rem;max-width:16ch;
+  }
+  .standfirst{margin:0;color:var(--ink-soft);max-width:44ch;font-size:1.02rem}
+
+  .stamp{
+    position:absolute;top:-.25rem;right:-.5rem;transform:rotate(-7deg);
+    border:2px solid var(--stamp);border-radius:3px;
+    padding:.4rem .7rem .3rem;background:var(--stamp-wash);
+    font-family:var(--mono);font-weight:600;color:var(--stamp);
+    text-align:center;line-height:1.15;
+  }
+  .stamp b{display:block;font-size:1.3rem;letter-spacing:.02em}
+  .stamp span{display:block;font-size:.58rem;letter-spacing:.2em;text-transform:uppercase}
+
+  /* ---------- key/value strip ---------- */
+  .facts{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));
+    gap:1.25rem 1.5rem;margin:1.5rem 0 0;padding:0;list-style:none;
+    border-bottom:1px solid var(--rule);padding-bottom:1.5rem;
+  }
+  .facts dt{
+    font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-faint);margin-bottom:.3rem;
+  }
+  .facts dd{margin:0;font-family:var(--mono);font-size:1.02rem;font-weight:500}
+  .facts dd small{display:block;font-size:.78rem;color:var(--ink-soft);font-weight:400;letter-spacing:0}
+
+  /* ---------- sections ---------- */
+  .sec{margin-top:3rem}
+  .sec-head{display:flex;align-items:baseline;gap:.85rem;margin-bottom:1rem}
+  .sec-num{
+    font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--stamp);
+    letter-spacing:.05em;flex:none;
+  }
+  .sec-title{
+    font-size:1.22rem;font-weight:600;letter-spacing:-.01em;margin:0;
+  }
+  .sub{
+    font-family:var(--mono);font-size:.78rem;font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink);margin:2rem 0 .55rem;
+  }
+  p{margin:0 0 1rem}
+  .sec p:last-child{margin-bottom:0}
+  strong{font-weight:600}
+  em{font-style:italic}
+
+  ul.list{margin:0 0 1rem;padding-left:0;list-style:none}
+  ul.list li{position:relative;padding-left:1.15rem;margin-bottom:.4rem}
+  ul.list li::before{
+    content:"";position:absolute;left:0;top:.62em;width:6px;height:1.5px;background:var(--ink-faint);
+  }
+
+  .callout{
+    border-left:3px solid var(--stamp);background:var(--stamp-wash);
+    padding:.9rem 1.1rem;margin:1.25rem 0;
+  }
+  .callout p{margin:0}
+  .callout p + p{margin-top:.6rem}
+
+  /* ---------- tables ---------- */
+  .table-wrap{overflow-x:auto;margin:1rem 0 1.25rem}
+  table{border-collapse:collapse;width:100%;font-size:.9rem}
+  th,td{text-align:left;padding:.5rem .75rem .5rem 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{
+    font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-faint);border-bottom:1.5px solid var(--ink);font-weight:500;
+  }
+  td.mono,th.mono{font-family:var(--mono)}
+
+  /* ---------- receipt ledger ---------- */
+  .ledger{margin:1.1rem 0 1.35rem;font-family:var(--mono);font-size:.88rem}
+  .ledger-row{display:flex;align-items:baseline;gap:.5rem;padding:.32rem 0}
+  .ledger-row .lab{flex:none;max-width:78%}
+  .ledger-row .dots{flex:1 1 auto;border-bottom:1.5px dotted var(--rule);transform:translateY(-.28em)}
+  .ledger-row .val{flex:none;font-weight:600;font-variant-numeric:tabular-nums}
+  .ledger-total{
+    border-top:1.5px solid var(--ink);border-bottom:4px double var(--ink);
+    margin-top:.4rem;font-weight:600;
+  }
+  .ledger-total .lab{text-transform:uppercase;letter-spacing:.14em;font-size:.76rem}
+
+  /* ---------- code ---------- */
+  pre{
+    font-family:var(--mono);font-size:.8rem;line-height:1.55;
+    background:var(--paper-edge);border:1px solid var(--rule);
+    padding:.9rem 1rem;overflow-x:auto;margin:1rem 0;
+  }
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-edge);padding:.08em .32em}
+  pre code{background:none;padding:0;font-size:1em}
+
+  /* ---------- submission ---------- */
+  .submit{
+    margin-top:3rem;border:2px solid var(--ink);padding:1.5rem clamp(1rem,4vw,1.75rem);
+  }
+  .submit .sub{margin-top:0}
+  .submit-link{
+    display:inline-block;margin:.35rem 0 1rem;
+    font-family:var(--mono);font-size:1rem;font-weight:600;
+    color:var(--stamp);text-decoration:none;
+    border-bottom:2px solid var(--stamp);padding-bottom:2px;word-break:break-all;
+  }
+  .submit-link:hover{background:var(--stamp-wash)}
+  a{color:var(--stamp)}
+  a:focus-visible,.submit-link:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+  .signoff{
+    margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);
+    display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  }
+
+  @media (max-width:34rem){
+    body{padding-top:1.25rem}
+    .stamp{position:static;display:inline-block;transform:rotate(-3deg);margin-bottom:1.25rem}
+    .title{max-width:none}
+  }
+  @media print{
+    body{background:#fff;padding:0;font-size:11pt}
+    .sheet{box-shadow:none;max-width:none;padding:0}
+    .sheet::before,.sheet::after{display:none}
+    .sec{break-inside:avoid}
+    pre,table,.ledger{break-inside:avoid}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="sheet">
+
+  <header class="masthead">
+    <div class="stamp" role="img" aria-label="Twenty-four hour time limit">
+      <b>12</b><span>hours</span>
+    </div>
+    <p class="eyebrow">Take-home assessment · Computer vision</p>
+    <h1 class="title">Receipt Capture &amp; Extraction</h1>
+    <p class="standfirst">Build a system that reads a phone photo of a paper receipt — or honestly refuses when it can't.</p>
+  </header>
+
+  <dl class="facts">
+    <div><dt>Time limit</dt><dd>12 hours<small>From when you open this brief</small></dd></div>
+    <div><dt>Expected effort</dt><dd>4–5 hours<small>The window is deliberately tight</small></dd></div>
+    <div><dt>Cost to you</dt><dd>₹0 / $0<small>Free tiers and open source only</small></dd></div>
+  </dl>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">01</span><h2 class="sec-title">The problem</h2></div>
+    <p>People photograph paper receipts with a phone: crooked, badly lit, glare across the total, half the frame is the table.</p>
+    <p>Build a small system that takes one of those photos and returns <strong>structured, trustworthy data</strong> — or honestly refuses when it can't.</p>
+    <div class="callout">
+      <p>"Trustworthy" is the operative word. A pipeline that guesses <code>total = 12.00</code> on an unreadable photo is worse for us than one that says "I can't read this, retake it." Your scoring reflects that — see section 05.</p>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">02</span><h2 class="sec-title">What you must build</h2></div>
+
+    <h3 class="sub">2.1 — A capture-quality gate</h3>
+    <p>Before you attempt any extraction, decide whether the image is usable. At minimum detect:</p>
+    <ul class="list">
+      <li>Blur / out-of-focus</li>
+      <li>Severe under- or over-exposure, and glare over text regions</li>
+      <li>Insufficient resolution</li>
+      <li>Document too small in the frame, or cut off at the edges</li>
+    </ul>
+    <p>When the image fails, return an <strong>actionable</strong> message ("Too blurry — hold steady and retake"), not a generic error.</p>
+
+    <h3 class="sub">2.2 — Document detection and rectification</h3>
+    <p>Locate the receipt in the photo and produce a flat, deskewed, cropped image of just the receipt. Perspective correction is required — a naive centre-crop will not pass.</p>
+
+    <h3 class="sub">2.3 — Field extraction</h3>
+    <p>From the rectified image, extract:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Format</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">merchant_name</td><td>string</td><td>as printed</td></tr>
+          <tr><td class="mono">transaction_date</td><td>string</td><td class="mono">YYYY-MM-DD</td></tr>
+          <tr><td class="mono">total_amount</td><td>number</td><td>2 decimal places</td></tr>
+          <tr><td class="mono">currency</td><td>string</td><td>ISO 4217, e.g. INR, USD</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">2.4 — Per-field confidence and abstention</h3>
+    <p>Every field carries a confidence score and a <code>needs_review</code> flag. Your thresholds are your own choice — but you must justify them in your report. Abstaining is free; being confidently wrong is expensive.</p>
+
+    <h3 class="sub">2.5 — Two interfaces</h3>
+    <p><strong>a) Streamlit app.</strong> Upload an image, see the quality verdict, the rectified crop, the extracted JSON, and the fields flagged for review. Deployed and publicly reachable.</p>
+    <p><strong>b) A headless function</strong>, in <code>src/pipeline.py</code>:</p>
+<pre><code>def extract(image_path: str) -&gt; dict:
+    ...</code></pre>
+    <p>returning exactly this shape:</p>
+<pre><code>{
+  "quality": {
+    "pass": true,
+    "issues": []
+  },
+  "fields": {
+    "merchant_name":    {"value": "Cafe Nine", "confidence": 0.91, "needs_review": false},
+    "transaction_date": {"value": "2026-03-14", "confidence": 0.88, "needs_review": false},
+    "total_amount":     {"value": 480.00,       "confidence": 0.42, "needs_review": true},
+    "currency":         {"value": "INR",        "confidence": 0.95, "needs_review": false}
+  },
+  "processing_ms": 1840
+}</code></pre>
+    <p>When <code>quality.pass</code> is <code>false</code>, <code>issues</code> must be a non-empty list of strings and every field value may be <code>null</code>. <strong>We run our own held-out images through this function</strong>, so match the schema exactly.</p>
+
+    <h3 class="sub">2.6 — Your own evaluation harness</h3>
+    <p>Assemble a labelled test set of <strong>at least 12 receipt photos</strong> that you shoot or source yourself. Include deliberately hard cases — this is part of the assessment. Store ground truth as JSON or CSV in the repo.</p>
+    <p>Then ship a runnable evaluator:</p>
+<pre><code>python eval.py --data test/</code></pre>
+    <p>It should print per-field accuracy, abstention rate, and the trust score defined in section 05.</p>
+
+    <h3 class="sub">2.7 — A short report</h3>
+    <p><code>REPORT.md</code>, roughly one page:</p>
+    <ul class="list">
+      <li>Your metrics from <code>eval.py</code></li>
+      <li><strong>Three failure cases</strong>, with the image, what went wrong, and why</li>
+      <li>Where your thresholds came from</li>
+      <li>What you would do with another week</li>
+      <li>Which AI coding tools you used and for what — see section 04</li>
+    </ul>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">03</span><h2 class="sec-title">Constraints</h2></div>
+    <ul class="list">
+      <li><strong>Python 3.10+</strong>, CPU-only. No GPU at inference.</li>
+      <li><strong>No paid or hosted vision/OCR APIs.</strong> Google Vision, AWS Textract, Azure Document Intelligence, and hosted LLM vision endpoints are all out. Open-source OCR is fine: Tesseract, EasyOCR, PaddleOCR, docTR, or your own approach.</li>
+      <li><strong>Deployed on Streamlit Community Cloud</strong> (free) or an equivalent free host. Cold start under ~60s; single image processed in under ~10s.</li>
+      <li>Public GitHub repo, MIT licensed, with <code>requirements.txt</code> — and <code>packages.txt</code> if you need apt packages such as <code>tesseract-ocr</code> or <code>libgl1</code>.</li>
+      <li>Pinned dependency versions.</li>
+    </ul>
+    <div class="callout">
+      <p><strong>Note on the memory ceiling.</strong> Streamlit's free tier gives you about 1&nbsp;GB of RAM. Some OCR stacks will not fit. Choosing a model that survives the deployment target <em>is</em> part of the engineering problem — we will not treat "it worked locally" as working.</p>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">04</span><h2 class="sec-title">Ground rules on AI assistants</h2></div>
+    <p>Use them. Copilot, Claude, Cursor, whatever you normally work with — that is how the job actually gets done.</p>
+    <p>Two conditions:</p>
+    <ul class="list">
+      <li>Disclose what you used and for what in <code>REPORT.md</code>.</li>
+      <li>You will walk us through your code live for 20 minutes. Be able to explain and defend any line of it, including why you rejected the alternatives.</li>
+    </ul>
+    <p>Code you cannot explain will be treated as code you did not write.</p>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">05</span><h2 class="sec-title">How we score</h2></div>
+    <p>Weighting is roughly:</p>
+    <div class="ledger">
+      <div class="ledger-row"><span class="lab">Pipeline correctness &amp; robustness</span><span class="dots"></span><span class="val">35%</span></div>
+      <div class="ledger-row"><span class="lab">Evaluation rigour &amp; honest error analysis</span><span class="dots"></span><span class="val">25%</span></div>
+      <div class="ledger-row"><span class="lab">Code quality</span><span class="dots"></span><span class="val">20%</span></div>
+      <div class="ledger-row"><span class="lab">Streamlit app usability</span><span class="dots"></span><span class="val">10%</span></div>
+      <div class="ledger-row"><span class="lab">Deployment &amp; reproducibility</span><span class="dots"></span><span class="val">10%</span></div>
+      <div class="ledger-row ledger-total"><span class="lab">Total</span><span class="dots"></span><span class="val">100%</span></div>
+    </div>
+
+    <p>Extraction accuracy is measured with a <strong>trust score</strong> across all fields on our held-out set:</p>
+    <div class="ledger">
+      <div class="ledger-row"><span class="lab">Correct and not flagged</span><span class="dots"></span><span class="val">+1</span></div>
+      <div class="ledger-row"><span class="lab">Flagged for review (right or wrong)</span><span class="dots"></span><span class="val">0</span></div>
+      <div class="ledger-row"><span class="lab">Wrong and <em>not</em> flagged</span><span class="dots"></span><span class="val">−1</span></div>
+    </div>
+
+    <p>Field matching: <code>merchant_name</code> case-insensitive with fuzzy match ≥&nbsp;0.85; <code>transaction_date</code> exact; <code>total_amount</code> exact to 2 decimals; <code>currency</code> exact.</p>
+    <p>A calibrated system that abstains on the hard 30% will beat an overconfident one that scores higher on raw accuracy. That is intentional.</p>
+    <p>We are looking for engineering judgment under a deadline: what you chose to build, what you deliberately left out, and how well you know where your own system breaks. A modest pipeline you understand completely beats an ambitious one you don't.</p>
+
+    <h3 class="sub">Optional stretch — only if the core is genuinely finished</h3>
+    <ul class="list">
+      <li>Learned corner detection instead of contour heuristics</li>
+      <li>Multiple receipts in one frame</li>
+      <li>Line-item extraction</li>
+      <li>A latency budget with measurements per stage</li>
+    </ul>
+    <p>Skipping every stretch item and nailing the core is a strong submission. Half-finished stretch work on a shaky core is not.</p>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-num">06</span><h2 class="sec-title">Deliverables</h2></div>
+    <div class="ledger">
+      <div class="ledger-row"><span class="lab">Public GitHub repository URL</span><span class="dots"></span><span class="val">required</span></div>
+      <div class="ledger-row"><span class="lab">Live app URL</span><span class="dots"></span><span class="val">required</span></div>
+      <div class="ledger-row"><span class="lab">REPORT.md in the repo</span><span class="dots"></span><span class="val">required</span></div>
+      <div class="ledger-row"><span class="lab">2-minute screen recording of the app</span><span class="dots"></span><span class="val">optional</span></div>
+    </div>
+  </section>
+
+  <section class="sec submit">
+    <div class="sec-head"><span class="sec-num">07</span><h2 class="sec-title">Submission</h2></div>
+
+    <!-- ============================================================
+         PASTE YOUR SUBMISSION LINK HERE.
+         Replace both the href="" value and the visible text below.
+         ============================================================ -->
+    <a class="submit-link" href="REPLACE_WITH_YOUR_SUBMISSION_LINK">Open the submission form →</a>
+
+    <p>Your 12 hours end at the deadline stated in your invitation email. Submit whatever you have when the clock runs out — a working core with an honest report of what's missing is a genuinely good outcome. Late submissions are not reviewed.</p>
+    <p>Questions about the brief are welcome before you start the clock. Once it starts, we won't answer scoping questions — deciding scope is part of what we're assessing.</p>
+    <p>Good luck.</p>
+  </section>
+
+  <div class="signoff">
+    <span>Candidate copy</span>
+    <span>Receipt capture &amp; extraction</span>
+  </div>
+
+</main>
+</body>
+</html>

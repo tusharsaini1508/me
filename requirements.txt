@@ -1,0 +1,10 @@
+# CPU-only receipt capture, OCR, and Streamlit UI dependencies.
+# Keep versions pinned for reproducible local and Streamlit Cloud builds.
+streamlit==1.43.2
+opencv-python-headless==4.11.0.86
+numpy==2.2.3
+Pillow==11.1.0
+pytesseract==0.3.13
+RapidFuzz==3.12.1
+PyMuPDF==1.28.2
+python-docx==0.8.11

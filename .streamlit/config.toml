@@ -1,0 +1,3 @@
+[server]
+# Reject oversized uploads before they consume the Streamlit worker's memory.
+maxUploadSize = 15

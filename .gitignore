@@ -1,0 +1,34 @@
+# Python bytecode and test/tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Virtual environments and build artifacts
+.venv/
+venv/
+env/
+ENV/
+.Python
+build/
+dist/
+*.egg-info/
+
+# Streamlit local state and secrets
+.streamlit/secrets.toml
+
+# Local uploads, generated artifacts, and logs
+uploads/
+artifacts/
+*.log
+
+# OS and editor metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
