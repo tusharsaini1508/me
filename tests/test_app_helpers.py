@@ -8,6 +8,10 @@ import app
 
 
 class AppHelperTests(unittest.TestCase):
+    def test_live_camera_component_is_disabled(self) -> None:
+        self.assertIsNone(app._render_live_camera_component())
+        self.assertFalse(hasattr(app, "components"))
+
     def test_ocr_runtime_issue_is_not_presented_as_a_bad_photo(self) -> None:
         self.assertTrue(
             app._is_ocr_runtime_issue(
